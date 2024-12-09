@@ -29,6 +29,7 @@ client_intents = discord.Intents.default()
 client_intents.message_content = True
 client = commands.Bot(command_prefix=".", intents=client_intents)
 access_token = None
+user_tokens = {}
 
 
 @client.event
@@ -62,7 +63,6 @@ async def login_with(ctx) -> None:
 
     # define callback function to handle code parameter
     async def handle_authorization_response(authorization_response):
-        global access_token
         parsed_response = urllib.parse.urlparse(authorization_response)
         query_params = urllib.parse.parse_qs(parsed_response.query)
         code = query_params.get("code", [''])[0]
@@ -85,7 +85,8 @@ async def login_with(ctx) -> None:
             async with session.post(url, data=params, headers=headers) as response:
                 if response.status == 200:
                     response_data = await response.json()
-                    access_token = response_data.get('access_token')
+                    token = response_data.get('access_token')
+                    user_tokens[ctx.author.id] = token
                     firstname = response_data['athlete'].get('firstname', 'Unknown')
                     lastname = response_data['athlete'].get('lastname', 'Unknown')
                     city = response_data['athlete'].get('city', 'Unknown')
@@ -112,14 +113,14 @@ async def login_with(ctx) -> None:
 @client.command(name="activities")
 async def get_activities(ctx) -> None:
     """Fetches and displays the user's activities from Strava"""
-    global access_token
-    if not access_token:
+    token = user_tokens.get(ctx.author.id)
+    if not token:
         await ctx.send("Access token not found. Please login first.")
         return
 
     url = f"{BASE_URL}athlete/activities"
     headers = {
-        'Authorization': f'Bearer {access_token}',
+        'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
 
@@ -137,10 +138,13 @@ async def get_activities(ctx) -> None:
                     start_date = activity.get('start_date', 'N/A')
                     activity_type = activity.get('type', 'N/A')
                     distance = activity.get('distance', 'N/A')
+                    el_gain = activity.get("elevation_gain", "N/A")
+                    av_speed = activity.get("average_speed", "N/A")
                     moving_time = activity.get('moving_time', 'N/A')
                     name = activity.get('name', 'N/A')
 
-                    message = f"{start_date} - {activity_type} - {distance}m - {moving_time}s - {name}"
+                    message = f"{start_date} - {activity_type} - {distance}m - {moving_time}s - " \
+                              f"elevation gain: {el_gain} m - av.speed: {av_speed} m/s - {name}"
                     messages.append(message)
 
                 for msg in messages[:5]:  # Sending the first 5 activities (can be increased or changed)
